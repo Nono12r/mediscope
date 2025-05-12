@@ -113,7 +113,7 @@ Tu dois être rigoureux, synthétique, factuel et **ne jamais supposer des élé
 Réponds en français.
 """
     response = client.chat.completions.create(
-        model="gpt-3.5-turbo",  # ✅ Version économique
+        model="gpt-4" ,  # ✅ Version économique
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3,
     )
