@@ -72,6 +72,12 @@ def check_infos(text: str) -> list:
 
 # Génération IA
 def generate_structured_synthesis_safe(text, missing_fields):
+    # Limiter la longueur du texte pour éviter les dépassements de tokens
+    max_input_length = 8000  # caractères
+    if len(text) > max_input_length:
+        text = text[:max_input_length]
+        st.warning("⚠️ Le texte a été tronqué pour rester dans les limites de GPT-4.")
+
     liste_champs = ", ".join(missing_fields)
     prompt = f"""
 Tu es un médecin expert en dommage corporel.
@@ -111,6 +117,23 @@ Rédige un **rapport médico-légal structuré** selon ce plan :
 
 Tu dois être rigoureux, synthétique, factuel et **ne jamais supposer des éléments non présents**.
 Réponds en français.
+"""
+
+    response = client.chat.completions.create(
+        model="gpt-4-1106-preview",  # GPT-4 Turbo : rapide et 3x moins cher
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.3,
+    )
+
+    output = response.choices[0].message.content
+
+    # Estimation du coût (approximatif)
+    estimated_tokens = len(prompt) // 4 + len(output) // 4
+    estimated_cost = (estimated_tokens / 1000) * 0.04  # $0.01 input + $0.03 output
+    st.caption(f"💰 Coût estimé de cette synthèse : {estimated_cost:.3f} $")
+
+    return output
+
 """
     response = client.chat.completions.create(
         model="gpt-4" ,  # ✅ Version économique
