@@ -24,18 +24,28 @@ def extract_text_from_pdf(file):
     return text
 
 def generate_structured_synthesis(text):
-    prompt = f"""
-    Tu es un médecin conseil expert. Voici un ensemble de documents médicaux bruts :
-    {text}
+    prompt = f"""Tu es un médecin conseil expert. Voici un ensemble de documents médicaux bruts :
+{text}
 
-    Rédige une synthèse médico-légale structurée destinée à une compagnie d’assurance.
-    Le rapport doit comporter les sections suivantes :
+Rédige une synthèse médico-légale structurée destinée à une compagnie d’assurance.
+Le rapport doit comporter les sections suivantes :
 
-    1. Informations générales du patient
-    2. Rappel des faits et déroulement
-    3. Retentissement personnel et professionnel
-    4. Doléances
-    5. Traitements en cours
-    6. Examen clinique
-    7. Discussion médico-légale
-    8. Conclusion (type
+1. Informations générales du patient
+2. Rappel des faits et déroulement
+3. Retentissement personnel et professionnel
+4. Doléances
+5. Traitements en cours
+6. Examen clinique
+7. Discussion médico-légale
+8. Conclusion (type : date accident, lésions, gêne, consolidation, DFP, SE, pénibilité, etc.)
+
+Le ton doit être formel, précis, synthétique. Utilise des paragraphes courts et numérotés si nécessaire.
+Réponds en français."""
+    
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.4,
+    )
+    return response.choices[0].message.content
+
