@@ -48,11 +48,10 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Authentification à l'API
+# Initialisation OpenAI
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
-# --- Fonctions ---
-
+# Fonctions OCR et PDF
 def extract_text_from_image(image_file):
     image = Image.open(image_file)
     return pytesseract.image_to_string(image, lang='fra')
@@ -97,8 +96,7 @@ def export_to_pdf(synthesis):
     pdf.output(temp.name)
     return temp.name
 
-# --- Interface utilisateur ---
-
+# Interface utilisateur
 st.markdown('<div class="step">Étape 1 – Déposez vos documents médicaux</div>', unsafe_allow_html=True)
 files = st.file_uploader("📁 Formats acceptés : PDF, JPG, PNG", type=["pdf", "jpg", "jpeg", "png"], accept_multiple_files=True)
 
