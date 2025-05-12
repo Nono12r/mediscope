@@ -1,18 +1,16 @@
-# Médiscope – Agent IA du médecin conseil (MVP)
+# Médiscope – Agent IA du médecin conseil (multi-documents)
 
 import streamlit as st
 import pytesseract
 from PIL import Image
 import tempfile
 import fitz  # PyMuPDF
-import openai
+from openai import OpenAI
 from fpdf import FPDF
 
 # CONFIG
 st.set_page_config(page_title="Médiscope", layout="wide")
-
-# Clé API OpenAI
-openai.api_key = st.secrets["OPENAI_API_KEY"]
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 # --- FONCTIONS ---
 
@@ -25,20 +23,28 @@ def extract_text_from_pdf(file):
     text = "\n".join([page.get_text() for page in doc])
     return text
 
-def generate_synthesis(text):
+def generate_structured_synthesis(text):
     prompt = f"""
-    Tu es un médecin conseil. Voici un dossier médical brut :
+    Tu es un médecin conseil expert. Voici un ensemble de documents médicaux bruts :
     {text}
 
-    Résume ce dossier en 4 blocs :
-    1. Antécédents médicaux
-    2. Diagnostic actuel
-    3. Traitements en cours
-    4. Points de surveillance et recommandations
+    Rédige une synthèse médico-légale structurée destinée à une compagnie d’assurance.
+    Le rapport doit comporter les sections suivantes :
 
-    Format clair, structuré, en français, sans interprétation juridique.
+    1. Informations générales du patient
+    2. Rappel des faits et déroulement
+    3. Retentissement personnel et professionnel
+    4. Doléances
+    5. Traitements en cours
+    6. Examen clinique
+    7. Discussion médico-légale
+    8. Conclusion (type : date accident, lésions, gêne, consolidation, DFP, SE, pénibilité, etc.)
+
+    Le ton doit être formel, précis, synthétique. Utilise des paragraphes courts et numérotés si nécessaire.
+    Réponds en français.
     """
-    response = openai.ChatCompletion.create(
+
+    response = client.chat.completions.create(
         model="gpt-4",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.4,
@@ -58,30 +64,33 @@ def export_to_pdf(synthesis):
 # --- INTERFACE ---
 
 st.title("🧠 Médiscope – Agent IA du médecin conseil")
-file = st.file_uploader("📁 Téléversez un dossier médical (PDF, JPG, PNG)", type=["pdf", "jpg", "jpeg", "png"])
+files = st.file_uploader("📁 Téléversez un ou plusieurs documents médicaux (PDF, JPG, PNG)", type=["pdf", "jpg", "jpeg", "png"], accept_multiple_files=True)
 
-if file:
-    with st.spinner("🔍 Analyse du document..."):
-        if file.type in ["image/jpeg", "image/png"]:
-            raw_text = extract_text_from_image(file)
-        elif file.type == "application/pdf":
-            raw_text = extract_text_from_pdf(file)
-        else:
-            st.error("❌ Format non supporté pour l’instant.")
-            st.stop()
+if files:
+    all_texts = []
+    with st.spinner("🔍 Extraction des contenus..."):
+        for file in files:
+            if file.type in ["image/jpeg", "image/png"]:
+                all_texts.append(extract_text_from_image(file))
+            elif file.type == "application/pdf":
+                all_texts.append(extract_text_from_pdf(file))
+            else:
+                st.warning(f"Format non supporté : {file.name}")
 
-    st.subheader("📄 Texte extrait")
-    st.text_area("Texte brut", raw_text, height=200)
+    combined_text = "\n\n".join(all_texts)
 
-    if st.button("🧬 Générer la synthèse IA"):
+    st.subheader("📄 Aperçu du texte extrait")
+    st.text_area("Texte combiné extrait des documents", combined_text, height=200)
+
+    if st.button("🧬 Générer la synthèse IA consolidée"):
         with st.spinner("🤖 Synthèse en cours..."):
-            synthesis = generate_synthesis(raw_text)
+            synthesis = generate_structured_synthesis(combined_text)
             st.subheader("🧾 Synthèse médicale IA")
-            edited = st.text_area("🖊️ Modifier la synthèse", synthesis, height=400)
+            edited = st.text_area("🖊️ Modifier la synthèse", synthesis, height=500)
 
             if st.button("📤 Exporter en PDF"):
                 pdf_path = export_to_pdf(edited)
                 with open(pdf_path, "rb") as f:
-                    st.download_button("📥 Télécharger le PDF", f, file_name="synthese_medicale.pdf")
+                    st.download_button("📥 Télécharger la synthèse PDF", f, file_name="synthese_medicale.pdf")
 
         st.success("✅ Synthèse générée avec succès !")
