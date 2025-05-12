@@ -36,3 +36,6 @@ def generate_structured_synthesis(text):
     3. Retentissement personnel et professionnel
     4. Doléances
     5. Traitements en cours
+    6. Examen clinique
+    7. Discussion médico-légale
+    8. Conclusion (type
