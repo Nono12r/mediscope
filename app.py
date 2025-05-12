@@ -158,14 +158,67 @@ if files:
     st.markdown('<div class="step">Étape 3 – Générer la synthèse IA</div>', unsafe_allow_html=True)
     if st.button("🧬 Générer la synthèse IA consolidée"):
         with st.spinner("🧬 Génération en cours..."):
-            synthesis = generate_structured_synthesis_safe(combined_text, missing_fields)
-            st.success("✅ Synthèse générée avec succès")
-            st.markdown('<div class="step">Étape 4 – Modifier ou exporter</div>', unsafe_allow_html=True)
-            edited = st.text_area("🖊️ Modifier la synthèse", synthesis, height=500)
-            if st.button("📤 Exporter en PDF"):
-                pdf_path = export_to_pdf(edited)
-                with open(pdf_path, "rb") as f:
-                    st.download_button("📥 Télécharger la synthèse PDF", f, file_name="synthese_medicale.pdf")
+            def generate_structured_synthesis_safe(text, missing_fields):
+    # Limiter la longueur du texte pour éviter les dépassements de tokens
+    max_input_length = 8000  # caractères
+    if len(text) > max_input_length:
+        text = text[:max_input_length]
+        st.warning("⚠️ Le texte a été tronqué pour rester dans les limites de GPT-4.")
+
+    liste_champs = ", ".join(missing_fields)
+    prompt = f"""
+Tu es un médecin expert en dommage corporel.
+
+Voici un extrait de dossier médical à analyser :
+
+{text}
+
+---
+
+⚠️ Informations absentes ou incomplètes : {liste_champs if missing_fields else 'aucune'}.
+
+➡️ Si certaines données sont absentes, **ne les invente jamais**. Mentionne explicitement "Information absente du dossier" ou "À rechercher" dans la section concernée.
+
+Rédige un **rapport médico-légal structuré** selon ce plan :
+
+1. Informations personnelles
+2. Mission et contexte
+3. État antérieur
+4. Rappel chronologique des faits
+5. Traitements suivis
+6. Retentissement personnel
+7. Retentissement professionnel
+8. Doléances actuelles
+9. Examen clinique
+10. Discussion médico-légale
+11. Conclusion médico-légale : 
+    - Date de l'accident
+    - Lésions identifiées
+    - Date de consolidation
+    - Gènes temporaires
+    - Assistance par tierce personne
+    - DFP (%)
+    - SE (/7)
+    - Pénibilité
+    - Dommages esthétiques / d’agrément
+
+Tu dois être rigoureux, synthétique, factuel et **ne jamais supposer des éléments non présents**.
+Réponds en français.
+"""
+    response = client.chat.completions.create(
+        model="gpt-4-1106-preview",  # ✅ GPT-4 turbo (plus rapide, moins cher)
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.3,
+    )
+
+    output = response.choices[0].message.content
+
+    # Afficher le coût estimé
+    estimated_tokens = len(prompt) // 4 + len(output) // 4
+    estimated_cost = (estimated_tokens / 1000) * 0.04  # 0.01 in + 0.03 out
+    st.caption(f"💰 Coût estimé de cette synthèse : {estimated_cost:.3f} $")
+
+    return output
 
 # Footer
 st.markdown('<div class="footer">© 2025 Médiscope · Version MVP · Produit en test – ne pas diffuser sans accord</div>', unsafe_allow_html=True)
