@@ -5,6 +5,7 @@ import tempfile
 import fitz
 from openai import OpenAI
 from fpdf import FPDF
+import io
 
 st.set_page_config(page_title="Médiscope", layout="wide")
 
@@ -27,10 +28,33 @@ Bienvenue dans l’interface Médiscope. Déposez vos documents médicaux **un p
 def extract_text(file):
     if file.type.startswith("image"):
         image = Image.open(file)
-        return pytesseract.image_to_string(image, lang='fra', config='--psm 6')
+        text = pytesseract.image_to_string(image, lang='fra', config='--psm 6')
+        return text + "
+[Source : image analysée par OCR]"
+
     elif file.type == "application/pdf":
         doc = fitz.open(stream=file.read(), filetype="pdf")
-        return "\n".join([page.get_text() for page in doc])
+        full_text = ""
+        for page_number, page in enumerate(doc):
+            text = page.get_text()
+            if text.strip():
+                full_text += f"
+--- Page {page_number+1} : texte direct ---
+{text}
+"
+            else:
+                pix = page.get_pixmap(dpi=300)
+                image_bytes = io.BytesIO(pix.tobytes("png"))
+                image = Image.open(image_bytes)
+                ocr_text = pytesseract.image_to_string(image, lang='fra', config='--psm 6')
+                full_text += f"
+--- Page {page_number+1} : texte OCR ---
+{ocr_text}
+"
+        return full_text.strip()
+
+    else:
+        return "[Format non supporté ou erreur d'ouverture du fichier]"
     else:
         return ""
 
