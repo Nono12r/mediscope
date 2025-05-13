@@ -8,37 +8,12 @@ from fpdf import FPDF
 
 st.set_page_config(page_title="Médiscope", layout="wide")
 
+if "docs" not in st.session_state:
+    st.session_state["docs"] = []
 if "syntheses" not in st.session_state:
     st.session_state["syntheses"] = []
 
-# 💡 Style CSS pro
-st.markdown("""
-    <style>
-        body { background-color: #F1FAEF; font-family: 'Inter', sans-serif; }
-        .title { font-size: 36px; color: #1D3557; font-weight: bold; margin-bottom: 0px; }
-        .claim { font-size: 18px; color: #84A98C; margin-top: 0px; }
-        .step { font-size: 20px; color: #1D3557; margin-top: 30px; font-weight: bold; }
-        .small-text { font-size: 13px; color: gray; }
-        .footer { font-size: 12px; color: #999; text-align: center; margin-top: 50px; }
-        .stButton > button { background-color: #A8DADC; color: black; border-radius: 5px; padding: 10px 20px; border: none; font-weight: bold; }
-    </style>
-""", unsafe_allow_html=True)
-
-# Logo et titre
-st.image("logo_mediscope.png", width=160)
-st.markdown('<div class="title">Médiscope</div>', unsafe_allow_html=True)
-
-# Claim
-st.markdown("""
-<div class="claim">
-<p style="font-size: 20px; color: #1D3557; font-weight: 600; margin-bottom: 0;">
-Gagnez du temps dans l’analyse des dossiers, concentrez-vous sur l’essentiel : vos patients.
-</p>
-<p style="font-size: 16px; color: #555; margin-top: 5px;">
-Médiscope automatise l’analyse de dossiers médicaux pour produire une synthèse claire, directement prête à être transmise à l’assurance.
-</p>
-</div>
-""", unsafe_allow_html=True)
+st.title("Médiscope – Analyse progressive de documents médicaux")
 
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
@@ -132,10 +107,10 @@ Réponds en français.
     return output
 
 def generate_final_summary(syntheses):
-    prompt = "Voici plusieurs synthèses médicales extraites d’un dossier complet :\n\n"
+    prompt = "Voici plusieurs synthèses médicales issues d’un même dossier :\n\n"
     for i, s in enumerate(syntheses):
         prompt += f"Synthèse {i+1}:\n{s}\n\n"
-    prompt += "\nRédige une synthèse médico-légale consolidée, rigoureuse et unique selon le même plan habituel."
+    prompt += "\nRédige une synthèse médico-légale globale et cohérente selon le même plan."
 
     response = client.chat.completions.create(
         model="gpt-4-1106-preview",
@@ -154,45 +129,35 @@ def export_to_pdf(synthesis):
     pdf.output(temp.name)
     return temp.name
 
-st.markdown('<div class="step">Étape 1 – Déposez un document médical (un par un)</div>', unsafe_allow_html=True)
-file = st.file_uploader("📁 Formats acceptés : PDF, JPG, PNG", type=["pdf", "jpg", "jpeg", "png"])
+st.header("Étape 1 – Déposer un document à la fois")
+file = st.file_uploader("📁 Charger un fichier (PDF, JPG, PNG)", type=["pdf", "jpg", "jpeg", "png"])
 
-if file:
-    with st.spinner("🧠 Extraction du contenu..."):
+if file and st.button("Analyser ce document"):
+    with st.spinner("📄 Analyse du document en cours..."):
         if file.type in ["image/jpeg", "image/png"]:
-            extracted_text = extract_text_from_image(file)
+            text = extract_text_from_image(file)
         elif file.type == "application/pdf":
-            extracted_text = extract_text_from_pdf(file)
+            text = extract_text_from_pdf(file)
         else:
-            st.warning(f"Format non supporté : {file.name}")
-            extracted_text = ""
+            st.warning("Format non supporté.")
+            text = ""
 
-    missing_fields = check_infos(extracted_text)
-    st.markdown('<div class="step">Étape 2 – Aperçu du texte extrait</div>', unsafe_allow_html=True)
-    st.text_area("Texte extrait", extracted_text, height=200)
-
-    if missing_fields:
-        st.warning(f"Informations manquantes : {', '.join(missing_fields)}")
-        st.info("La synthèse IA indiquera explicitement les champs absents sans les inventer.")
-
-    st.markdown('<div class="step">Étape 3 – Générer une synthèse pour ce document</div>', unsafe_allow_html=True)
-    if st.button("🧬 Générer la synthèse de ce document"):
-        with st.spinner("🧬 Synthèse en cours..."):
-            synthesis = generate_structured_synthesis_safe(extracted_text, missing_fields)
-            st.session_state.syntheses.append(synthesis)
-            st.success("Synthèse ajoutée à la synthèse finale")
-            st.text_area("🖊️ Synthèse générée (modifiable manuellement avant fusion)", synthesis, height=400)
+        if text:
+            missing = check_infos(text)
+            synth = generate_structured_synthesis_safe(text, missing)
+            st.session_state.docs.append(file.name)
+            st.session_state.syntheses.append(synth)
+            st.success(f"Synthèse ajoutée pour {file.name}")
+            st.text_area(f"Synthèse générée ({file.name})", synth, height=300)
 
 if st.session_state.syntheses:
-    st.markdown('<div class="step">Étape 4 – Fusionner toutes les synthèses ajoutées</div>', unsafe_allow_html=True)
-    if st.button("🧩 Générer la synthèse globale finale"):
-        with st.spinner("🔗 Fusion des synthèses..."):
-            final_summary = generate_final_summary(st.session_state.syntheses)
-            st.success("✅ Synthèse finale consolidée générée")
-            edited = st.text_area("🖊️ Modifier la synthèse consolidée", final_summary, height=500)
-            if st.button("📤 Exporter la synthèse PDF consolidée"):
+    st.header("Étape 2 – Fusionner toutes les synthèses")
+    if st.button("🧩 Générer la synthèse médico-légale finale"):
+        with st.spinner("Fusion des synthèses en cours..."):
+            final_report = generate_final_summary(st.session_state.syntheses)
+            st.success("Synthèse finale générée !")
+            edited = st.text_area("🖊️ Modifier la synthèse finale", final_report, height=500)
+            if st.button("📥 Exporter en PDF"):
                 pdf_path = export_to_pdf(edited)
                 with open(pdf_path, "rb") as f:
-                    st.download_button("📥 Télécharger la synthèse PDF", f, file_name="synthese_medicale_globale.pdf")
-
-st.markdown('<div class="footer">© 2025 Médiscope · Version MVP – Ne pas diffuser sans accord</div>', unsafe_allow_html=True)
+                    st.download_button("📥 Télécharger la synthèse PDF", f, file_name="synthese_finale.pdf")
