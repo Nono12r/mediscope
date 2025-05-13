@@ -48,7 +48,8 @@ def ocr_via_ocrspace_bytes(byte_data, filename="page.png"):
 # 🔄 Lecture intelligente PDF multi-pages
 def extract_text(file):
     if file.type.startswith("image"):
-        return ocr_via_ocrspace_bytes(file.read(), filename=file.name)
+        byte_data = file.read()
+        return ocr_via_ocrspace_bytes(byte_data, filename=file.name)
 
     elif file.type == "application/pdf":
         doc = fitz.open(stream=file.read(), filetype="pdf")
