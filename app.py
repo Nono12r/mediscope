@@ -29,8 +29,7 @@ def extract_text(file):
     if file.type.startswith("image"):
         image = Image.open(file)
         text = pytesseract.image_to_string(image, lang='fra', config='--psm 6')
-        return text + "
-[Source : image analysée par OCR]"
+        return text + "\n[Source : image analysée par OCR]"
 
     elif file.type == "application/pdf":
         doc = fitz.open(stream=file.read(), filetype="pdf")
@@ -38,25 +37,18 @@ def extract_text(file):
         for page_number, page in enumerate(doc):
             text = page.get_text()
             if text.strip():
-                full_text += f"
---- Page {page_number+1} : texte direct ---
-{text}
-"
+                full_text += f"\n--- Page {page_number+1} : texte direct ---\n{text}\n"
             else:
                 pix = page.get_pixmap(dpi=300)
                 image_bytes = io.BytesIO(pix.tobytes("png"))
                 image = Image.open(image_bytes)
                 ocr_text = pytesseract.image_to_string(image, lang='fra', config='--psm 6')
-                full_text += f"
---- Page {page_number+1} : texte OCR ---
-{ocr_text}
-"
+                full_text += f"\n--- Page {page_number+1} : texte OCR ---\n{ocr_text}\n"
         return full_text.strip()
 
     else:
         return "[Format non supporté ou erreur d'ouverture du fichier]"
-    else:
-        return ""
+
 
 # Synthèse IA segmentée
 def generate_structured_synthesis(text):
