@@ -2,73 +2,46 @@ import streamlit as st
 import pytesseract
 from PIL import Image
 import tempfile
-import fitz  # PyMuPDF
+import fitz
 from openai import OpenAI
 from fpdf import FPDF
 
 st.set_page_config(page_title="Médiscope", layout="wide")
 
-if "docs" not in st.session_state:
-    st.session_state["docs"] = []
-if "syntheses" not in st.session_state:
-    st.session_state["syntheses"] = []
-
-st.title("Médiscope – Analyse progressive de documents médicaux")
-
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
-def extract_text_from_image(image_file):
-    image = Image.open(image_file)
-    return pytesseract.image_to_string(image, lang='fra', config='--psm 6')
+if "syntheses" not in st.session_state:
+    st.session_state.syntheses = []
+if "documents" not in st.session_state:
+    st.session_state.documents = []
+if "final_synthesis" not in st.session_state:
+    st.session_state.final_synthesis = None
 
-def extract_text_from_pdf(file):
-    doc = fitz.open(stream=file.read(), filetype="pdf")
-    text = "\n".join([page.get_text() for page in doc])
-    return text
+st.title("🩺 Médiscope – Analyse médico-légale progressive")
 
-def check_infos(text: str) -> list:
-    required_fields = {
-        "Nom": ["nom", "patient", "monsieur", "madame"],
-        "Date de naissance": ["né le", "date de naissance"],
-        "Date de l’accident": ["accident", "avp", "traumatisme", "collision"],
-        "Examen clinique": ["examen clinique", "amplitude", "épaule", "rachis", "rotation"],
-        "Traitement suivi": ["kinésithérapie", "immobilisation", "orthèse", "médicament"],
-        "Date de consolidation": ["consolidation", "reprise", "stabilisation"],
-        "DFP": ["déficit fonctionnel", "DFP", "%"],
-        "Souffrances endurées": ["souffrances", "SE", "sur 7"],
-        "Profession": ["profession", "travail", "carreleur", "activité professionnelle"],
-    }
-    missing_fields = []
-    text_lower = text.lower()
-    for label, keywords in required_fields.items():
-        if not any(keyword in text_lower for keyword in keywords):
-            missing_fields.append(label)
-    return missing_fields
+st.markdown("""
+Bienvenue dans l’interface Médiscope. Déposez vos documents médicaux **un par un**, obtenez une **synthèse médicale experte à chaque étape**, puis fusionnez-les en un **rapport final structuré**.
+""")
 
-def generate_structured_synthesis_safe(text, missing_fields):
-    max_input_length = 8000
-    if len(text) > max_input_length:
-        text = text[:max_input_length]
-        st.warning("Le texte a été tronqué pour rester dans les limites de GPT-4.")
+# Extraction OCR ou texte direct
+def extract_text(file):
+    if file.type.startswith("image"):
+        image = Image.open(file)
+        return pytesseract.image_to_string(image, lang='fra', config='--psm 6')
+    elif file.type == "application/pdf":
+        doc = fitz.open(stream=file.read(), filetype="pdf")
+        return "\n".join([page.get_text() for page in doc])
+    else:
+        return ""
 
-    liste_champs = ", ".join(missing_fields)
-    infos_text = f"Informations absentes ou incomplètes : {liste_champs if missing_fields else 'aucune'}."
-
+# Synthèse IA segmentée
+def generate_structured_synthesis(text):
     prompt = f"""
-Tu es un médecin expert en dommage corporel.
-
-Voici un extrait de dossier médical à analyser :
+Tu es un médecin expert en dommage corporel. Voici un extrait de dossier médical à analyser :
 
 {text}
 
----
-
-{infos_text}
-
-Si certaines données sont absentes, ne les invente jamais. Mentionne explicitement "Information absente du dossier" ou "À rechercher" dans la section concernée.
-
-Rédige un rapport médico-légal structuré selon ce plan :
-
+Rédige une synthèse médico-légale structurée selon le plan suivant :
 1. Informations personnelles
 2. Mission et contexte
 3. État antérieur
@@ -79,38 +52,24 @@ Rédige un rapport médico-légal structuré selon ce plan :
 8. Doléances actuelles
 9. Examen clinique
 10. Discussion médico-légale
-11. Conclusion médico-légale : 
-    - Date de l'accident
-    - Lésions identifiées
-    - Date de consolidation
-    - Gènes temporaires
-    - Assistance par tierce personne
-    - DFP (%)
-    - SE (/7)
-    - Pénibilité
-    - Dommages esthétiques / d’agrément
+11. Conclusion médico-légale
 
-Tu dois être rigoureux, synthétique, factuel et ne jamais supposer des éléments non présents.
+Mentionne explicitement les informations absentes. Sois rigoureux, structuré et professionnel.
 Réponds en français.
 """
-
     response = client.chat.completions.create(
         model="gpt-4-1106-preview",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3,
     )
+    return response.choices[0].message.content
 
-    output = response.choices[0].message.content
-    estimated_tokens = len(prompt) // 4 + len(output) // 4
-    estimated_cost = (estimated_tokens / 1000) * 0.04
-    st.caption(f"Coût estimé de cette synthèse : {estimated_cost:.3f} $")
-    return output
-
-def generate_final_summary(syntheses):
-    prompt = "Voici plusieurs synthèses médicales issues d’un même dossier :\n\n"
+# Fusion finale des synthèses
+def generate_final_synthesis(syntheses):
+    prompt = "Voici plusieurs synthèses médicales individuelles issues d’un dossier complet :\n\n"
     for i, s in enumerate(syntheses):
-        prompt += f"Synthèse {i+1}:\n{s}\n\n"
-    prompt += "\nRédige une synthèse médico-légale globale et cohérente selon le même plan."
+        prompt += f"Synthèse {i+1} :\n{s}\n\n"
+    prompt += "\nRédige une synthèse médico-légale unique, rigoureuse, cohérente, selon le plan habituel."
 
     response = client.chat.completions.create(
         model="gpt-4-1106-preview",
@@ -119,45 +78,49 @@ def generate_final_summary(syntheses):
     )
     return response.choices[0].message.content
 
-def export_to_pdf(synthesis):
+# Export PDF
+def export_to_pdf(text):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=12)
-    for line in synthesis.split("\n"):
-        pdf.multi_cell(0, 10, txt=line)
+    for line in text.split("\n"):
+        pdf.multi_cell(0, 10, line)
     temp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
     pdf.output(temp.name)
     return temp.name
 
-st.header("Étape 1 – Déposer un document à la fois")
-file = st.file_uploader("📁 Charger un fichier (PDF, JPG, PNG)", type=["pdf", "jpg", "jpeg", "png"])
+st.header("Étape en cours – Déposez un nouveau document médical")
+file = st.file_uploader("📁 Ajouter un document (PDF, JPG, PNG)", type=["pdf", "jpg", "jpeg", "png"])
 
 if file and st.button("Analyser ce document"):
-    with st.spinner("📄 Analyse du document en cours..."):
-        if file.type in ["image/jpeg", "image/png"]:
-            text = extract_text_from_image(file)
-        elif file.type == "application/pdf":
-            text = extract_text_from_pdf(file)
+    with st.spinner("🔍 Lecture et extraction en cours..."):
+        text = extract_text(file)
+        if text.strip():
+            synthesis = generate_structured_synthesis(text)
+            st.session_state.documents.append(file.name)
+            st.session_state.syntheses.append(synthesis)
+            st.success(f"✅ Synthèse générée pour {file.name}")
+            st.text_area(f"📝 Synthèse du document : {file.name}", synthesis, height=350)
         else:
-            st.warning("Format non supporté.")
-            text = ""
+            st.error("❌ Impossible d'extraire du texte depuis ce document.")
 
-        if text:
-            missing = check_infos(text)
-            synth = generate_structured_synthesis_safe(text, missing)
-            st.session_state.docs.append(file.name)
-            st.session_state.syntheses.append(synth)
-            st.success(f"Synthèse ajoutée pour {file.name}")
-            st.text_area(f"Synthèse générée ({file.name})", synth, height=300)
-
+# Liste des synthèses générées
 if st.session_state.syntheses:
-    st.header("Étape 2 – Fusionner toutes les synthèses")
-    if st.button("🧩 Générer la synthèse médico-légale finale"):
-        with st.spinner("Fusion des synthèses en cours..."):
-            final_report = generate_final_summary(st.session_state.syntheses)
-            st.success("Synthèse finale générée !")
-            edited = st.text_area("🖊️ Modifier la synthèse finale", final_report, height=500)
-            if st.button("📥 Exporter en PDF"):
-                pdf_path = export_to_pdf(edited)
-                with open(pdf_path, "rb") as f:
-                    st.download_button("📥 Télécharger la synthèse PDF", f, file_name="synthese_finale.pdf")
+    st.header("📚 Synthèses générées")
+    for i, synth in enumerate(st.session_state.syntheses):
+        st.text_area(f"Synthèse {i+1} – {st.session_state.documents[i]}", synth, height=300)
+
+    # Fusion finale
+    st.header("🧩 Étape finale – Générer le rapport consolidé")
+    if st.button("Fusionner toutes les synthèses"):
+        with st.spinner("Fusion intelligente des synthèses..."):
+            final = generate_final_synthesis(st.session_state.syntheses)
+            st.session_state.final_synthesis = final
+            st.success("✅ Rapport final prêt")
+
+    if st.session_state.final_synthesis:
+        st.text_area("🖊️ Modifier la synthèse finale consolidée", st.session_state.final_synthesis, height=500)
+        if st.button("📤 Télécharger le rapport final en PDF"):
+            pdf_path = export_to_pdf(st.session_state.final_synthesis)
+            with open(pdf_path, "rb") as f:
+                st.download_button("📥 Télécharger le PDF", f, file_name="synthese_medico_legale_finale.pdf")
